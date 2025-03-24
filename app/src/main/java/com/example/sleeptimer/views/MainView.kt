@@ -1,8 +1,14 @@
 package com.example.sleeptimer.views
 
+import android.Manifest
 import android.app.TimePickerDialog
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -30,14 +36,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -50,6 +59,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -83,7 +94,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val customCardColors = CardDefaults.cardColors(
         contentColor = MaterialTheme.colorScheme.primary,
-        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        containerColor = Color.Cyan,//MaterialTheme.colorScheme.primaryContainer,
         disabledContentColor = MaterialTheme.colorScheme.surface,
         disabledContainerColor = MaterialTheme.colorScheme.onSurface,
     )
@@ -92,6 +103,36 @@ fun HomeScreen(
         pressedElevation = 1.dp,
         focusedElevation = 2.dp
     )
+    var hasNotificationPermission by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else true
+        )
+    }
+    val permissionRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { result ->
+            hasNotificationPermission = result
+            if (hasNotificationPermission) {
+                // Permission granted, proceed with notification-related tasks
+                Toast.makeText(context, "Notification Permission Granted", Toast.LENGTH_SHORT).show()
+                viewModel.changeNotificationPermissionState(true)
+            } else {
+                // Permission denied, handle accordingly
+                Toast.makeText(context, "Notification Permission Denied by User. Enable Setting Manually!", Toast.LENGTH_SHORT).show()
+                viewModel.changeNotificationPermissionState(false)
+            }
+        }
+    val isTimerRunning by viewModel.isTimerRunning.collectAsStateWithLifecycle()
+    LaunchedEffect(isTimerRunning) {
+        if (isTimerRunning) {
+            viewModel.pauseMedia(context,hasNotificationPermission)
+        } else {
+            viewModel.stopTimer(context,hasNotificationPermission)
+        }
+    }
 
     Column (
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -113,7 +154,7 @@ fun HomeScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(8.dp)
+                    modifier = Modifier.padding(10.dp)
                 ) {
                     Text(
                         text = "Sleep Timer ",
@@ -148,15 +189,61 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.weight(1.0f))
 
-        ShowTimePicker(context, 0, 0)
+        //ShowTimePicker(context, 0, 0)
         
-        Content(viewModel)
-        Text(
-            text = "Current Minutes: ${viewModel.processedMins}",
-            fontSize = 20.sp,
-            textAlign = TextAlign.Center,
-            color = Color.White
-        )
+        Content(isTimerRunning,viewModel)
+
+        if (isTimerRunning) {
+            Text(
+                text = "Remaning Minutes: ${viewModel.delayInMillis}",
+                fontSize = 20.sp,
+                textAlign = TextAlign.Center,
+                color = Color.White,
+                modifier = Modifier
+                    .padding(10.dp)
+            )
+        } else {
+            Text(
+                text = "Minutes: ${viewModel.processedMins}",
+                fontSize = 20.sp,
+                textAlign = TextAlign.Center,
+                color = Color.White,
+                modifier = Modifier
+                    .padding(10.dp)
+            )
+        }
+
+        if (!hasNotificationPermission) {
+            Button(
+                modifier = Modifier
+                    .fillMaxWidth(0.5f)
+                    .padding(10.dp),
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.DarkGray,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(3.dp),
+                contentPadding = PaddingValues(
+                    start = 10.dp,
+                    top = 10.dp,
+                    end = 15.dp,
+                    bottom = 10.dp
+                ),
+                border = BorderStroke(1.dp, Color.Gray)
+            ) {
+                Text(
+                    text = "Enable Notification Permission !",
+                    fontSize = 20.sp,
+                    textAlign = TextAlign.Center,
+                    color = Color.White
+                )
+            }
+        }
 //        Text(
 //            text = "Current Mins: ${viewModel.tempnumber.value}",
 //            fontSize = 20.sp,
@@ -175,7 +262,7 @@ fun HomeScreen(
                 Button(
                     modifier = Modifier.fillMaxWidth(0.5f),
                     onClick = {
-
+                        viewModel.extendSleepTimer()
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.DarkGray,
@@ -191,7 +278,7 @@ fun HomeScreen(
                     border = BorderStroke(1.dp, Color.Gray)
                 ) {
                     Text(
-                        text = "Restart",
+                        text = "Extend",
                         fontSize = 20.sp,
                         textAlign = TextAlign.Center,
                         color = Color.White
@@ -200,7 +287,8 @@ fun HomeScreen(
                 Button(
                     modifier = Modifier.fillMaxWidth(1f),
                     onClick = {
-
+                        if (viewModel.processedMins > 0) { viewModel.toggleTimer() }
+                        //if (hasNotificationPermission) { viewModel.toggleTimerNotification(context) }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.DarkGray,
@@ -215,12 +303,21 @@ fun HomeScreen(
                     ),
                     border = BorderStroke(1.dp, Color.Gray)
                 ) {
-                    Text(
-                        text = "Start",
-                        fontSize = 20.sp,
-                        textAlign = TextAlign.Center,
-                        color = Color.White
-                    )
+                    if(isTimerRunning) {
+                        Text(
+                            text = "Stop",
+                            fontSize = 20.sp,
+                            textAlign = TextAlign.Center,
+                            color = Color.White
+                        )
+                    } else {
+                        Text(
+                            text = "Start",
+                            fontSize = 20.sp,
+                            textAlign = TextAlign.Center,
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -265,6 +362,7 @@ fun HomeScreenPreview() {
 
 @Composable
 fun Content(
+    isTimerRunning: Boolean,
     viewModel: HomeScreenViewModel
 ) {
     var radius by remember {
@@ -279,11 +377,13 @@ fun Content(
     var angle by remember {
         mutableDoubleStateOf(0.0)
     }
+    //val isTimerRunning = rememberUpdatedState(isTimerRunning)
 
     Canvas(
         modifier = Modifier
-            .size(300.dp)
+            .size(if (isTimerRunning) 0.dp else 280.dp)
             //.fillMaxSize()
+            .alpha(if (isTimerRunning) 0.5f else 1f)
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
                     handleCenter += dragAmount
@@ -294,7 +394,7 @@ fun Content(
                     viewModel.onAngleChanged(angle)
                     change.consume()
                 }
-            }
+        }
             .padding(30.dp)
 
     ) {
@@ -313,16 +413,18 @@ fun Content(
             startAngle = 0f,
             sweepAngle = angle.toFloat(),
             useCenter = false,
-            style = Stroke(23f),
+            style = Stroke(30f),
             brush = Brush.sweepGradient( // !!! that what
-                0f to Color.White,
+                0f to Color(0x00EF7B7B),
                 0.5f to Color.Yellow,
                 1f to Color.Green, // there was a problem with start of the gradient, maybe there way to solve it better
                 //1f to Color(0x00EF7B7B)
             ),
         )
 
-        drawCircle(color = Color.Cyan, center = handleCenter, radius = 40f)
+        if (!isTimerRunning) {
+            drawCircle(color = Color.Cyan, center = handleCenter, radius = 40f)
+        }
     }
 
 }
@@ -338,6 +440,7 @@ private fun getRotationAngle(currentPosition: Offset, center: Offset): Double {
 
     return angle
 }
+
 
 /*
 
