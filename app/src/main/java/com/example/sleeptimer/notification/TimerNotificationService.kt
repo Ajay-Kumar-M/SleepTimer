@@ -2,18 +2,19 @@ package com.example.sleeptimer.notification
 
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.TaskStackBuilder
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.sleeptimer.MainActivity
 import com.example.sleeptimer.R
-import com.example.sleeptimer.viewModel.HomeScreenViewModel
 
 class TimerNotificationService(private  val context: Context) {
 
     companion object {
         const val TIMER_CHANNEL_ID = "Timer_Channel_ID"
+        const val TIMER_NOTIFICATION_ID = 1
     }
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -23,7 +24,7 @@ class TimerNotificationService(private  val context: Context) {
             context,
             1,
             activityIntent,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) { PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE } else 0
         )
         val incrementTimer = PendingIntent.getBroadcast(
             context,
@@ -53,13 +54,21 @@ class TimerNotificationService(private  val context: Context) {
             .setSilent(true)
             .build()
 
-        notificationManager.notify(
-            1,
-            notification
-        )
+        notificationManager.notify(TIMER_NOTIFICATION_ID,notification)
     }
 
     fun stopNotification() {
-        notificationManager.cancel(1)
+        notificationManager.cancel(TIMER_NOTIFICATION_ID)
     }
 }
+
+/*
+//            .apply {
+//            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+//        }
+//        val stackBuilder = TaskStackBuilder.create(context).apply {
+//            addParentStack(MainActivity::class.java)
+//            addNextIntent(activityIntent)
+//        }
+//        val activityPendingIntent = stackBuilder.getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+ */

@@ -9,6 +9,12 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.DurationBasedAnimationSpec
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -24,7 +30,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -33,6 +41,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,12 +57,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.LinearGradientShader
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -66,10 +82,20 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.work.BackoffPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.Operation
+import androidx.work.WorkManager
 import com.example.sleeptimer.R
 import com.example.sleeptimer.components.Screen
+import com.example.sleeptimer.components.SleepTimerWorker
+import com.example.sleeptimer.model.TimerSingleton
+import com.example.sleeptimer.notification.TimerNotificationService
 import com.example.sleeptimer.ui.theme.SleepTimerTheme
 import com.example.sleeptimer.viewModel.HomeScreenViewModel
+import java.time.Duration
 import kotlin.math.atan2
 
 @Composable
@@ -125,12 +151,25 @@ fun HomeScreen(
                 viewModel.changeNotificationPermissionState(false)
             }
         }
-    val isTimerRunning by viewModel.isTimerRunning.collectAsStateWithLifecycle()
+    var workRequest:OneTimeWorkRequest
+    val applicationWorkManager = WorkManager.getInstance(context)
+    val isTimerRunning by TimerSingleton.isTimerRunning.collectAsStateWithLifecycle()
+    val timerNotificationService = TimerNotificationService(context)
+
     LaunchedEffect(isTimerRunning) {
         if (isTimerRunning) {
-            viewModel.pauseMedia(context,hasNotificationPermission)
+            TimerSingleton.startTimer(viewModel.processedMins,timerNotificationService, hasNotificationPermission)
+            workRequest = OneTimeWorkRequestBuilder<SleepTimerWorker>()
+                .setInitialDelay(Duration.ofMinutes(TimerSingleton.liveTimer.toLong()))
+                .setBackoffCriteria(
+                    backoffPolicy = BackoffPolicy.LINEAR,
+                    duration = Duration.ofSeconds(10)
+                )
+                .addTag("sleep_timer_work")
+                .build()
+            applicationWorkManager.enqueueUniqueWork("sleep_timer_work",ExistingWorkPolicy.REPLACE,workRequest)
         } else {
-            viewModel.stopTimer(context,hasNotificationPermission)
+            TimerSingleton.stopTimer(timerNotificationService)
         }
     }
 
@@ -140,7 +179,6 @@ fun HomeScreen(
             .background(Color.Black)
             .fillMaxHeight()
     ){
-
         Row (
             modifier = Modifier
                 .fillMaxWidth()
@@ -186,73 +224,69 @@ fun HomeScreen(
                 }
             }
         }
-
-        Spacer(modifier = Modifier.weight(1.0f))
-
+        Spacer(modifier = Modifier.weight(0.5f))
         //ShowTimePicker(context, 0, 0)
-        
-        Content(isTimerRunning,viewModel)
-
-        if (isTimerRunning) {
-            Text(
-                text = "Remaning Minutes: ${viewModel.delayInMillis}",
-                fontSize = 20.sp,
-                textAlign = TextAlign.Center,
-                color = Color.White,
-                modifier = Modifier
-                    .padding(10.dp)
-            )
-        } else {
-            Text(
-                text = "Minutes: ${viewModel.processedMins}",
-                fontSize = 20.sp,
-                textAlign = TextAlign.Center,
-                color = Color.White,
-                modifier = Modifier
-                    .padding(10.dp)
-            )
-        }
-
-        if (!hasNotificationPermission) {
-            Button(
-                modifier = Modifier
-                    .fillMaxWidth(0.5f)
-                    .padding(10.dp),
-                onClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.DarkGray,
-                    contentColor = Color.White
-                ),
-                shape = RoundedCornerShape(3.dp),
-                contentPadding = PaddingValues(
-                    start = 10.dp,
-                    top = 10.dp,
-                    end = 15.dp,
-                    bottom = 10.dp
-                ),
-                border = BorderStroke(1.dp, Color.Gray)
-            ) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .weight(weight = 2f, fill = true)
+        ) {
+            Content(isTimerRunning, viewModel)
+            if (isTimerRunning) {
+                ShimmeringText(
+                    text = "Remaining Minutes: ${TimerSingleton.liveTimer}",
+                    shimmerColor = Color.White,
+                    textStyle = LocalTextStyle.current.copy(
+                        fontSize = 25.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            } else {
                 Text(
-                    text = "Enable Notification Permission !",
+                    text = "Minutes: ${viewModel.processedMins}",
                     fontSize = 20.sp,
                     textAlign = TextAlign.Center,
-                    color = Color.White
+                    color = Color.White,
+                    modifier = Modifier
+                        .padding(10.dp)
+                        .align(Alignment.CenterHorizontally)
                 )
             }
+
+            if (!hasNotificationPermission) {
+                Button(
+                    modifier = Modifier
+                        .fillMaxWidth(0.5f)
+                        .padding(10.dp)
+                        .align(Alignment.CenterHorizontally),
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.DarkGray,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(3.dp),
+                    contentPadding = PaddingValues(
+                        start = 10.dp,
+                        top = 10.dp,
+                        end = 15.dp,
+                        bottom = 10.dp
+                    ),
+                    border = BorderStroke(1.dp, Color.Gray)
+                ) {
+                    Text(
+                        text = "Enable Notification Permission !",
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center,
+                        color = Color.White
+                    )
+                }
+            }
         }
-//        Text(
-//            text = "Current Mins: ${viewModel.tempnumber.value}",
-//            fontSize = 20.sp,
-//            textAlign = TextAlign.Center,
-//            color = Color.White
-//        )
-
-        Spacer(modifier = Modifier.weight(1.0f))
-
+        Spacer(modifier = Modifier.weight(0.5f))
         Column (
             verticalArrangement = Arrangement.Bottom
         ){
@@ -260,9 +294,19 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth()
             ){
                 Button(
-                    modifier = Modifier.fillMaxWidth(0.5f),
+                    modifier = Modifier.fillMaxWidth(0.333f),
                     onClick = {
-                        viewModel.extendSleepTimer()
+                        TimerSingleton.extendSleepTimer(timerNotificationService)
+                        applicationWorkManager.cancelAllWorkByTag("sleep_timer_work")
+                        val updateWorkRequest = OneTimeWorkRequestBuilder<SleepTimerWorker>()
+                            .setInitialDelay(Duration.ofMinutes(TimerSingleton.liveTimer.toLong()))
+                            .setBackoffCriteria(
+                                backoffPolicy = BackoffPolicy.LINEAR,
+                                duration = Duration.ofSeconds(10)
+                            )
+                            .addTag("sleep_timer_work")
+                            .build()
+                        applicationWorkManager.enqueueUniqueWork("sleep_timer_work",ExistingWorkPolicy.REPLACE,updateWorkRequest)
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.DarkGray,
@@ -285,9 +329,9 @@ fun HomeScreen(
                     )
                 }
                 Button(
-                    modifier = Modifier.fillMaxWidth(1f),
+                    modifier = Modifier.fillMaxWidth(0.5f),
                     onClick = {
-                        if (viewModel.processedMins > 0) { viewModel.toggleTimer() }
+                        if (viewModel.processedMins > 0) { TimerSingleton.toggleTimer() }
                         //if (hasNotificationPermission) { viewModel.toggleTimerNotification(context) }
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -301,51 +345,45 @@ fun HomeScreen(
                         end = 15.dp,
                         bottom = 10.dp
                     ),
-                    border = BorderStroke(1.dp, Color.Gray)
+                    border = BorderStroke(1.dp, Color.Gray),
+                    enabled = !isTimerRunning
                 ) {
-                    if(isTimerRunning) {
-                        Text(
-                            text = "Stop",
-                            fontSize = 20.sp,
-                            textAlign = TextAlign.Center,
-                            color = Color.White
-                        )
-                    } else {
-                        Text(
-                            text = "Start",
-                            fontSize = 20.sp,
-                            textAlign = TextAlign.Center,
-                            color = Color.White
-                        )
-                    }
+                    Text(
+                        text = "Start",
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center,
+                        color = Color.White
+                    )
+                }
+                Button(
+                    modifier = Modifier.fillMaxWidth(1f),
+                    onClick = {
+                        if (viewModel.processedMins > 0) { TimerSingleton.toggleTimer() }
+                        applicationWorkManager.cancelAllWorkByTag("sleep_timer_work")
+                        //if (hasNotificationPermission) { viewModel.toggleTimerNotification(context) }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.DarkGray,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(3.dp),
+                    contentPadding = PaddingValues(
+                        start = 10.dp,
+                        top = 10.dp,
+                        end = 15.dp,
+                        bottom = 10.dp
+                    ),
+                    border = BorderStroke(1.dp, Color.Gray),
+                    enabled = isTimerRunning
+                ) {
+                    Text(
+                        text = "Stop",
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center,
+                        color = Color.White
+                    )
                 }
             }
-        }
-
-
-    }
-}
-
-@Composable
-fun ShowTimePicker(context: Context, initHour: Int, initMinute: Int) {
-    val time = remember { mutableStateOf("") }
-    val timePickerDialog = TimePickerDialog(
-        context,
-        {_, hour : Int, minute: Int ->
-            time.value = "$hour:$minute"
-            Toast.makeText(context, time.value, Toast.LENGTH_SHORT).show()
-        }, initHour, initMinute, true
-    )
-    Column (
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Button(
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            onClick = {
-                timePickerDialog.show()
-            }
-        ) {
-            Text(text = "Open Time Picker")
         }
     }
 }
@@ -357,8 +395,6 @@ fun HomeScreenPreview() {
         MainView()
     }
 }
-
-
 
 @Composable
 fun Content(
@@ -399,14 +435,10 @@ fun Content(
 
     ) {
         shapeCenter = center
-
         radius = size.minDimension / 2
-
         val x = (shapeCenter.x + kotlin.math.cos(Math.toRadians(angle)) * radius).toFloat()
         val y = (shapeCenter.y + kotlin.math.sin(Math.toRadians(angle)) * radius).toFloat()
-
         handleCenter = Offset(x, y)
-
         drawCircle(color = Color.White, style = Stroke(20f), radius = radius) //Color.Black.copy(alpha = 0.10f)
         drawArc(
             //color = Color.,
@@ -421,7 +453,6 @@ fun Content(
                 //1f to Color(0x00EF7B7B)
             ),
         )
-
         if (!isTimerRunning) {
             drawCircle(color = Color.Cyan, center = handleCenter, radius = 40f)
         }
@@ -441,8 +472,100 @@ private fun getRotationAngle(currentPosition: Offset, center: Offset): Double {
     return angle
 }
 
+@Composable
+fun GlowingText(text: String) {
+    val glowColor = Color(0xFF00FF00) // Neon green glow
+    val textStyle = TextStyle(
+        fontSize = 30.sp,
+        fontWeight = FontWeight.Bold,
+        color = Color.White,
+        shadow = Shadow(
+            color = glowColor,
+            offset = Offset(0f, 0f),
+            blurRadius = 10f
+        )
+    )
+
+    Text(
+        text = text,
+        style = textStyle,
+//        modifier = modifier,
+        fontSize = 20.sp,
+        textAlign = TextAlign.Center,
+        color = Color.White,
+        modifier = Modifier
+            .padding(10.dp)
+//            .align(Alignment.CenterHorizontally)
+    )
+}
+
+@Composable
+fun ShimmeringText(
+    text: String,
+    shimmerColor: Color,
+    modifier: Modifier = Modifier,
+    textStyle: TextStyle = LocalTextStyle.current,
+    animationSpec: DurationBasedAnimationSpec<Float> = tween(3000, 0, LinearEasing)
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "ShimmeringTextTransition")
+    val shimmerProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animationSpec),
+        label = "ShimmerProgress"
+    )
+
+    val brush = remember(shimmerProgress) {
+        object : ShaderBrush() {
+            override fun createShader(size: Size): Shader {
+                // Define the starting X offset, beginning outside the left edge of the text
+                val initialXOffset = -size.width
+                // Total distance the shimmer will sweep across (double the text width for full coverage)
+                val totalSweepDistance = size.width * 2
+                // Calculate the current position of the shimmer based on the animation progress
+                val currentPosition = initialXOffset + totalSweepDistance * shimmerProgress
+
+                return LinearGradientShader(
+                    colors = listOf(Color.Transparent, shimmerColor, Color.Transparent),
+                    from = Offset(currentPosition, 0f),
+                    to = Offset(currentPosition + size.width, 0f)
+                )
+            }
+        }
+    }
+
+    Text(
+        text = text,
+        modifier = modifier,
+        style = textStyle.copy(brush = brush)
+    )
+}
 
 /*
+
+@Composable
+fun ShowTimePicker(context: Context, initHour: Int, initMinute: Int) {
+    val time = remember { mutableStateOf("") }
+    val timePickerDialog = TimePickerDialog(
+        context,
+        {_, hour : Int, minute: Int ->
+            time.value = "$hour:$minute"
+            Toast.makeText(context, time.value, Toast.LENGTH_SHORT).show()
+        }, initHour, initMinute, true
+    )
+    Column (
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Button(
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            onClick = {
+                timePickerDialog.show()
+            }
+        ) {
+            Text(text = "Open Time Picker")
+        }
+    }
+}
 
     val stripeWidthPx = 10
     val stripeGapWidthPx = stripeWidthPx / 3.5f
