@@ -1,11 +1,8 @@
 package com.example.sleeptimer.views
 
 import android.Manifest
-import android.app.TimePickerDialog
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,6 +36,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -51,7 +49,6 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,10 +58,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.LinearGradientShader
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shader
 import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -83,12 +78,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.work.BackoffPolicy
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.Operation
+import androidx.work.PeriodicWorkRequest
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.sleeptimer.R
+import com.example.sleeptimer.components.MediaVolumeWorker
 import com.example.sleeptimer.components.Screen
 import com.example.sleeptimer.components.SleepTimerWorker
 import com.example.sleeptimer.model.TimerSingleton
@@ -96,6 +94,7 @@ import com.example.sleeptimer.notification.TimerNotificationService
 import com.example.sleeptimer.ui.theme.SleepTimerTheme
 import com.example.sleeptimer.viewModel.HomeScreenViewModel
 import java.time.Duration
+import java.util.concurrent.TimeUnit
 import kotlin.math.atan2
 
 @Composable
@@ -151,15 +150,17 @@ fun HomeScreen(
                 viewModel.changeNotificationPermissionState(false)
             }
         }
-    var workRequest:OneTimeWorkRequest
     val applicationWorkManager = WorkManager.getInstance(context)
+    var sleepTimerWorkRequest:OneTimeWorkRequest
+    var mediaVolumeWorkRequest:PeriodicWorkRequest
     val isTimerRunning by TimerSingleton.isTimerRunning.collectAsStateWithLifecycle()
+    val isMediaVolumeChecked by viewModel.isMediaVolumeChecked.collectAsStateWithLifecycle()
     val timerNotificationService = TimerNotificationService(context)
 
     LaunchedEffect(isTimerRunning) {
         if (isTimerRunning) {
             TimerSingleton.startTimer(viewModel.processedMins,timerNotificationService, hasNotificationPermission)
-            workRequest = OneTimeWorkRequestBuilder<SleepTimerWorker>()
+            sleepTimerWorkRequest = OneTimeWorkRequestBuilder<SleepTimerWorker>()
                 .setInitialDelay(Duration.ofMinutes(TimerSingleton.liveTimer.toLong()))
                 .setBackoffCriteria(
                     backoffPolicy = BackoffPolicy.LINEAR,
@@ -167,9 +168,16 @@ fun HomeScreen(
                 )
                 .addTag("sleep_timer_work")
                 .build()
-            applicationWorkManager.enqueueUniqueWork("sleep_timer_work",ExistingWorkPolicy.REPLACE,workRequest)
+            applicationWorkManager.enqueueUniqueWork("sleep_timer_work",ExistingWorkPolicy.REPLACE,sleepTimerWorkRequest)
+            if (isMediaVolumeChecked) {
+                mediaVolumeWorkRequest = PeriodicWorkRequestBuilder<MediaVolumeWorker>(15, TimeUnit.MINUTES)
+                    .setInitialDelay(15,TimeUnit.MINUTES)
+                    .addTag("media_volume_work")
+                    .build()
+                applicationWorkManager.enqueueUniquePeriodicWork("media_volume_work",ExistingPeriodicWorkPolicy.UPDATE,mediaVolumeWorkRequest)
+            }
         } else {
-            TimerSingleton.stopTimer(timerNotificationService)
+            TimerSingleton.stopTimer(timerNotificationService,applicationWorkManager)
         }
     }
 
@@ -227,11 +235,16 @@ fun HomeScreen(
         Spacer(modifier = Modifier.weight(0.5f))
         //ShowTimePicker(context, 0, 0)
         Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .verticalScroll(rememberScrollState())
                 .weight(weight = 2f, fill = true)
         ) {
-            Content(isTimerRunning, viewModel)
+            Row(modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+            ) {
+                TimerCanvas(isTimerRunning, viewModel)
+            }
             if (isTimerRunning) {
                 ShimmeringText(
                     text = "Remaining Minutes: ${TimerSingleton.liveTimer}",
@@ -251,6 +264,22 @@ fun HomeScreen(
                         .padding(10.dp)
                         .align(Alignment.CenterHorizontally)
                 )
+                Row(modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                ) {
+                    Checkbox(
+                        checked = isMediaVolumeChecked,
+                        onCheckedChange = { viewModel.toggleMediaVolumeCheckbox() }
+                    )
+                    Text(
+                        text = "Reduce Media Volume every 15 minutes",
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center,
+                        color = Color.White,
+                        modifier = Modifier
+                            .padding(0.dp,15.dp,0.dp,0.dp)
+                    )
+                }
             }
 
             if (!hasNotificationPermission) {
@@ -360,7 +389,6 @@ fun HomeScreen(
                     onClick = {
                         if (viewModel.processedMins > 0) { TimerSingleton.toggleTimer() }
                         applicationWorkManager.cancelAllWorkByTag("sleep_timer_work")
-                        //if (hasNotificationPermission) { viewModel.toggleTimerNotification(context) }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.DarkGray,
@@ -397,7 +425,7 @@ fun HomeScreenPreview() {
 }
 
 @Composable
-fun Content(
+fun TimerCanvas(
     isTimerRunning: Boolean,
     viewModel: HomeScreenViewModel
 ) {
@@ -417,7 +445,7 @@ fun Content(
 
     Canvas(
         modifier = Modifier
-            .size(if (isTimerRunning) 0.dp else 280.dp)
+            .size(if (isTimerRunning) 0.dp else 270.dp)
             //.fillMaxSize()
             .alpha(if (isTimerRunning) 0.5f else 1f)
             .pointerInput(Unit) {
@@ -470,33 +498,6 @@ private fun getRotationAngle(currentPosition: Offset, center: Offset): Double {
     }
 
     return angle
-}
-
-@Composable
-fun GlowingText(text: String) {
-    val glowColor = Color(0xFF00FF00) // Neon green glow
-    val textStyle = TextStyle(
-        fontSize = 30.sp,
-        fontWeight = FontWeight.Bold,
-        color = Color.White,
-        shadow = Shadow(
-            color = glowColor,
-            offset = Offset(0f, 0f),
-            blurRadius = 10f
-        )
-    )
-
-    Text(
-        text = text,
-        style = textStyle,
-//        modifier = modifier,
-        fontSize = 20.sp,
-        textAlign = TextAlign.Center,
-        color = Color.White,
-        modifier = Modifier
-            .padding(10.dp)
-//            .align(Alignment.CenterHorizontally)
-    )
 }
 
 @Composable

@@ -13,7 +13,6 @@ class TimerNotificationReceiver : BroadcastReceiver() {
         when(intent.getStringExtra("operation_type")) {
             "STOP" -> {
                 Log.d("MainTimerView","STOP notification called : ${intent.getStringExtra("operation_type")} minutes")
-//                TimerSingleton.stopTimer(timerNotificationService)
                 TimerSingleton.toggleTimer()
             }
             "INCREMENT" -> {

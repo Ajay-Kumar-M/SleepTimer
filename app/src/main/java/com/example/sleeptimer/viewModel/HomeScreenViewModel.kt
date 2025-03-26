@@ -4,6 +4,9 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class HomeScreenViewModel : ViewModel() {
 
@@ -13,6 +16,9 @@ class HomeScreenViewModel : ViewModel() {
     private var hasNotificationPermission: Boolean = false
     val processedMins : Int
         get() = _processedAngle.value.div(6).plus(totalHours.value.toInt() * 60)
+    private val _isMediaVolumeChecked = MutableStateFlow(false)
+    val isMediaVolumeChecked: StateFlow<Boolean>
+        get() = _isMediaVolumeChecked.asStateFlow()
 
     fun onAngleChanged(currentAngle: Double){
         val tempCurrentAngle = currentAngle.toInt()
@@ -29,6 +35,9 @@ class HomeScreenViewModel : ViewModel() {
         hasNotificationPermission = permissionState
     }
 
+    fun toggleMediaVolumeCheckbox() {
+        _isMediaVolumeChecked.value = !_isMediaVolumeChecked.value
+    }
 }
 
 /*

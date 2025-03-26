@@ -9,10 +9,10 @@ import androidx.work.Data
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 
-class SleepTimerWorker(private val appContext: Context,private val params: WorkerParameters) : Worker(appContext,params) {
+class SleepTimerWorker(appContext: Context, params: WorkerParameters) : Worker(appContext,params) {
 
-    val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val focusRequest: AudioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA)

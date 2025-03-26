@@ -3,6 +3,7 @@ package com.example.sleeptimer.model
 import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.work.WorkManager
 import com.example.sleeptimer.notification.TimerNotificationService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -66,9 +67,10 @@ object TimerSingleton {
         }
     }
 
-    fun stopTimer(timerNotificationService: TimerNotificationService) {
+    fun stopTimer(timerNotificationService: TimerNotificationService,applicationWorkManager:WorkManager) {
         Log.d("Timer_Singleton","StopTimer called : ${liveTimer} minutes")
         runningTask.cancel()
+        applicationWorkManager.cancelAllWorkByTag("media_volume_work")
         if (isNotificationRunning.value) {
             toggleTimerNotification(timerNotificationService)
         }
