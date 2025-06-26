@@ -22,9 +22,9 @@ git clone [https://github.com/yourusername/sleep-timer-app.git](https://github.c
 Open the project in Android Studio Flamingo or later.<br/>
 Build and run the app on a device or emulator.<br/>
 Set your desired timer duration and let your media play — the app will handle the rest!<br/><br/>
+## 🔧 Permissions Used<br/>
+android.permission.POST_NOTIFICATION<br/><br/>
 ## 📸 Screenshots<br/>
 <a href="url"><img src="https://github.com/user-attachments/assets/5ff0fdfa-b635-4172-b386-8b15544094fa" align="left" height="500" width="260" ></a><br/>
 <a href="url"><img src="https://github.com/user-attachments/assets/634d06c6-da3a-494a-bae4-9875040f5e26" align="left" height="500" width="260" ></a><br/>
 <a href="url"><img src="https://github.com/user-attachments/assets/39249692-6cce-4844-bff5-6afe60d61db7" align="left" height="500" width="260" ></a><br/><br/>
-## 🔧 Permissions Used<br/>
-android.permission.POST_NOTIFICATION<br/><br/>
