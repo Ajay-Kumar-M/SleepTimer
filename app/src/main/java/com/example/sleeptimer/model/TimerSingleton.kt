@@ -1,16 +1,12 @@
 package com.example.sleeptimer.model
 
-import android.annotation.SuppressLint
-import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.ui.platform.LocalContext
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.lifecycle.viewModelScope
 import androidx.work.BackoffPolicy
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -18,7 +14,6 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequest
 import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import com.example.sleeptimer.MyApp
 import com.example.sleeptimer.components.MediaVolumeWorker
 import com.example.sleeptimer.components.SleepTimerWorker
@@ -26,9 +21,7 @@ import com.example.sleeptimer.data.TimerPrefs
 import com.example.sleeptimer.data.timerDataStore
 import com.example.sleeptimer.notification.TimerNotificationService
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
