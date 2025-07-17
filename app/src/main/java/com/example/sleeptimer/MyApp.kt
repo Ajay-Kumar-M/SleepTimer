@@ -5,13 +5,23 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import androidx.work.WorkManager
+import com.example.sleeptimer.model.TimerSingleton
 import com.example.sleeptimer.notification.TimerNotificationService
 
 class MyApp : Application() {
 
+    lateinit var timerNotificationService: TimerNotificationService
+        private set
+    lateinit var applicationWorkManager: WorkManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
+        TimerSingleton.initialize(this.applicationContext)
         createNotificationChannel()
+        timerNotificationService = TimerNotificationService(this.applicationContext)
+        applicationWorkManager = WorkManager.getInstance(this.applicationContext)
     }
 
     private fun createNotificationChannel() {

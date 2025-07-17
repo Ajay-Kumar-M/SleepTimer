@@ -17,7 +17,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,20 +32,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableFloatStateOf
@@ -77,24 +73,12 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.work.BackoffPolicy
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequest
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequest
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import com.example.sleeptimer.MyApp
 import com.example.sleeptimer.R
-import com.example.sleeptimer.components.MediaVolumeWorker
 import com.example.sleeptimer.components.Screen
-import com.example.sleeptimer.components.SleepTimerWorker
 import com.example.sleeptimer.model.TimerSingleton
-import com.example.sleeptimer.notification.TimerNotificationService
 import com.example.sleeptimer.ui.theme.SleepTimerTheme
 import com.example.sleeptimer.viewModel.HomeScreenViewModel
-import java.time.Duration
-import java.util.concurrent.TimeUnit
 import kotlin.math.atan2
 
 @Composable
@@ -150,36 +134,18 @@ fun HomeScreen(
                 viewModel.changeNotificationPermissionState(false)
             }
         }
-    val applicationWorkManager = WorkManager.getInstance(context)
-    var sleepTimerWorkRequest:OneTimeWorkRequest
-    var mediaVolumeWorkRequest:PeriodicWorkRequest
     val isTimerRunning by TimerSingleton.isTimerRunning.collectAsStateWithLifecycle()
     val isMediaVolumeChecked by viewModel.isMediaVolumeChecked.collectAsStateWithLifecycle()
-    val timerNotificationService = TimerNotificationService(context)
+    val application = context.applicationContext as MyApp
 
-    LaunchedEffect(isTimerRunning) {
-        if (isTimerRunning) {
-            TimerSingleton.startTimer(viewModel.processedMins,timerNotificationService, hasNotificationPermission)
-            sleepTimerWorkRequest = OneTimeWorkRequestBuilder<SleepTimerWorker>()
-                .setInitialDelay(Duration.ofMinutes(TimerSingleton.liveTimer.toLong()))
-                .setBackoffCriteria(
-                    backoffPolicy = BackoffPolicy.LINEAR,
-                    duration = Duration.ofSeconds(10)
-                )
-                .addTag("sleep_timer_work")
-                .build()
-            applicationWorkManager.enqueueUniqueWork("sleep_timer_work",ExistingWorkPolicy.REPLACE,sleepTimerWorkRequest)
-            if (isMediaVolumeChecked) {
-                mediaVolumeWorkRequest = PeriodicWorkRequestBuilder<MediaVolumeWorker>(15, TimeUnit.MINUTES)
-                    .setInitialDelay(15,TimeUnit.MINUTES)
-                    .addTag("media_volume_work")
-                    .build()
-                applicationWorkManager.enqueueUniquePeriodicWork("media_volume_work",ExistingPeriodicWorkPolicy.UPDATE,mediaVolumeWorkRequest)
-            }
-        } else {
-            TimerSingleton.stopTimer(timerNotificationService,applicationWorkManager)
-        }
-    }
+
+//    LaunchedEffect(isTimerRunning) {
+//        if (isTimerRunning) {
+//
+//        } else {
+//
+//        }
+//    }
 
     Column (
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -192,11 +158,12 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .height(50.dp)
         ){
-            Card(
-                colors = customCardColors,
-                elevation = customCardElevation,
+            Box(
+//                colors = customCardColors,
+//                elevation = customCardElevation,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(color = Color.Cyan)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -217,18 +184,18 @@ fun HomeScreen(
                             .align(Alignment.CenterVertically)
                     )
 
-                    Spacer(modifier = Modifier.weight(1.0f))
-                    IconButton(
-                        onClick = {
-                            navController.navigate("SettingsView")
-                        },
-                    ) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "",
-                            tint = Color.Black
-                        )
-                    }
+//                    Spacer(modifier = Modifier.weight(1.0f))
+//                    IconButton(
+//                        onClick = {
+//                            navController.navigate("SettingsView")
+//                        },
+//                    ) {
+//                        Icon(
+//                            Icons.Default.Settings,
+//                            contentDescription = "",
+//                            tint = Color.Black
+//                        )
+//                    }
                 }
             }
         }
@@ -269,7 +236,8 @@ fun HomeScreen(
                 ) {
                     Checkbox(
                         checked = isMediaVolumeChecked,
-                        onCheckedChange = { viewModel.toggleMediaVolumeCheckbox() }
+                        onCheckedChange = { viewModel.toggleMediaVolumeCheckbox() },
+                        interactionSource = remember { MutableInteractionSource() }
                     )
                     Text(
                         text = "Reduce Media Volume every 15 minutes",
@@ -325,17 +293,8 @@ fun HomeScreen(
                 Button(
                     modifier = Modifier.fillMaxWidth(0.333f),
                     onClick = {
-                        TimerSingleton.extendSleepTimer(timerNotificationService)
-                        applicationWorkManager.cancelAllWorkByTag("sleep_timer_work")
-                        val updateWorkRequest = OneTimeWorkRequestBuilder<SleepTimerWorker>()
-                            .setInitialDelay(Duration.ofMinutes(TimerSingleton.liveTimer.toLong()))
-                            .setBackoffCriteria(
-                                backoffPolicy = BackoffPolicy.LINEAR,
-                                duration = Duration.ofSeconds(10)
-                            )
-                            .addTag("sleep_timer_work")
-                            .build()
-                        applicationWorkManager.enqueueUniqueWork("sleep_timer_work",ExistingWorkPolicy.REPLACE,updateWorkRequest)
+                        TimerSingleton.extendSleepTimer()
+                        viewModel.saveState()
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.DarkGray,
@@ -360,7 +319,11 @@ fun HomeScreen(
                 Button(
                     modifier = Modifier.fillMaxWidth(0.5f),
                     onClick = {
-                        if (viewModel.processedMins > 0) { TimerSingleton.toggleTimer() }
+                        if (viewModel.processedMins > 0) {
+                            TimerSingleton.toggleTimer()
+                            TimerSingleton.startTimer(viewModel.processedMins, hasNotificationPermission, isMediaVolumeChecked)
+                            viewModel.saveState()
+                        }
                         //if (hasNotificationPermission) { viewModel.toggleTimerNotification(context) }
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -387,8 +350,11 @@ fun HomeScreen(
                 Button(
                     modifier = Modifier.fillMaxWidth(1f),
                     onClick = {
-                        if (viewModel.processedMins > 0) { TimerSingleton.toggleTimer() }
-                        applicationWorkManager.cancelAllWorkByTag("sleep_timer_work")
+//                        if (viewModel.processedMins > 0) {
+                            TimerSingleton.toggleTimer()
+                            TimerSingleton.stopTimer()
+                            viewModel.saveState()
+//                        }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.DarkGray,

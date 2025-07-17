@@ -9,15 +9,17 @@ import com.example.sleeptimer.model.TimerSingleton
 class TimerNotificationReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val timerNotificationService = TimerNotificationService(context)
         when(intent.getStringExtra("operation_type")) {
             "STOP" -> {
                 Log.d("MainTimerView","STOP notification called : ${intent.getStringExtra("operation_type")} minutes")
                 TimerSingleton.toggleTimer()
+                TimerSingleton.stopTimer()
+                TimerSingleton.saveState()
             }
             "INCREMENT" -> {
                 Log.d("MainTimerView","increment timer called : ${intent.getStringExtra("operation_type")} minutes")
-                TimerSingleton.extendSleepTimer(timerNotificationService)
+                TimerSingleton.extendSleepTimer()
+                TimerSingleton.saveState()
             }
         }
 

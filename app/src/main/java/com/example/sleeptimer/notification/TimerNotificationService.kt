@@ -10,8 +10,9 @@ import androidx.core.app.NotificationCompat
 import com.example.sleeptimer.MainActivity
 import com.example.sleeptimer.R
 
-class TimerNotificationService(private  val context: Context) {
+class TimerNotificationService(contextConst: Context) {
 
+    val context = contextConst.applicationContext
     companion object {
         const val TIMER_CHANNEL_ID = "Timer_Channel_ID"
         const val TIMER_NOTIFICATION_ID = 1
@@ -19,7 +20,7 @@ class TimerNotificationService(private  val context: Context) {
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     fun showNotification(timer: Int) {
-        val activityIntent = Intent(context,MainActivity::class.java)
+        val activityIntent = Intent(context,MainActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val activityPendingIntent = PendingIntent.getActivity(
             context,
             1,
